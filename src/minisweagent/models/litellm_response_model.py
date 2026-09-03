@@ -39,12 +39,19 @@ class LitellmResponseModel(LitellmModel):
 
     def _query(self, messages: list[dict[str, str]], **kwargs):
         try:
-            return litellm.responses(
+            model_kwargs = self.config.model_kwargs | kwargs
+            model_kwargs["stream"] = True
+            events = litellm.responses(
                 model=self.config.model_name,
                 input=messages,
                 tools=[BASH_TOOL_RESPONSE_API],
-                **(self.config.model_kwargs | kwargs),
+                **model_kwargs,
             )
+            for event in events:
+                event_type = getattr(event, "type", "")
+                if getattr(event_type, "value", event_type) == "response.completed":
+                    return event.response
+            raise RuntimeError("Responses API stream ended without a completed response")
         except litellm.exceptions.AuthenticationError as e:
             e.message += " You can permanently set your API key with `mini-extra config set KEY VALUE`."
             raise e
