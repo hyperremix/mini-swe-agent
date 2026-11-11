@@ -17,6 +17,22 @@ from minisweagent.models.utils.retry import retry
 
 logger = logging.getLogger("litellm_response_model")
 
+# Python names that openai's pydantic models use for API fields that are Python keywords.
+# Without by_alias=True they are dumped under these names, which the API rejects with
+# "Unknown parameter: 'input[N].async_'".
+_PYTHON_TO_API_FIELD_NAMES = {"async_": "async", "schema_": "schema"}
+
+
+def _api_input_item(item: dict) -> dict:
+    """Return a stored output item in the form the Responses API accepts as input."""
+    return {_PYTHON_TO_API_FIELD_NAMES.get(k, k): v for k, v in item.items() if k != "extra"}
+
+
+def _dump_response(response) -> dict:
+    if hasattr(response, "model_dump"):
+        return response.model_dump(by_alias=True)
+    return dict(response)
+
 
 class LitellmResponseModelConfig(LitellmModelConfig):
     pass
@@ -32,7 +48,7 @@ class LitellmResponseModel(LitellmModel):
         for msg in messages:
             if msg.get("object") == "response":
                 for item in msg.get("output", []):
-                    result.append({k: v for k, v in item.items() if k != "extra"})
+                    result.append(_api_input_item(item))
             else:
                 result.append({k: v for k, v in msg.items() if k != "extra"})
         return result
@@ -76,7 +92,7 @@ class LitellmResponseModel(LitellmModel):
             except Exception:
                 e.messages[0]["extra"]["response"] = repr(response)
             raise
-        message = response.model_dump() if hasattr(response, "model_dump") else dict(response)
+        message = _dump_response(response)
         message["extra"] = {
             "actions": actions,
             **cost_output,
