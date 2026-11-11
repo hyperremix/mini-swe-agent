@@ -48,6 +48,9 @@ class LitellmModelConfig(BaseModel):
 
 class LitellmModel:
     abort_exceptions: list[type[Exception]] = [
+        # HTTP 400: the request itself is invalid, so resending it cannot succeed.
+        # Also covers ContextWindowExceededError and ContentPolicyViolationError.
+        litellm.exceptions.BadRequestError,
         litellm.exceptions.UnsupportedParamsError,
         litellm.exceptions.NotFoundError,
         litellm.exceptions.PermissionDeniedError,
